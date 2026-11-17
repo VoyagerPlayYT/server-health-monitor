@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server & PC Health Monitor — Живая панель мониторинга</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cyber: {
+                            bg: '#0A0D14',
+                            card: '#111622',
+                            border: '#1F293D',
+                            accent: '#00F5FF',
+                            green: '#00FF88',
+                            purple: '#A855F7'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .glow-green { box-shadow: 0 0 15px rgba(0, 255, 136, 0.2); }
+        .glow-cyan { box-shadow: 0 0 15px rgba(0, 245, 255, 0.2); }
+        .glow-purple { box-shadow: 0 0 15px rgba(168, 85, 247, 0.2); }
+    </style>
+</head>
+<body class="bg-[#0A0D14] text-slate-100 min-h-screen font-sans flex flex-col">
+    <!-- Header -->
+    <header class="border-b border-[#1F293D] bg-[#111622]/90 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-emerald-500 flex items-center justify-center text-black font-black text-lg shadow-lg shadow-cyan-500/20">
+                    ⚡
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight tracking-wide flex items-center space-x-2">
+                        <span>HomeServer Health Monitor</span>
+                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">v2.4 PRO</span>
+                    </h1>
+                    <p class="text-xs text-slate-400" id="serverMeta">Подключение к системной телеметрии...</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <div class="hidden sm:flex flex-col text-right">
+                    <span class="text-xs text-slate-400">Время непрерывной работы</span>
+                    <span id="uptimeVal" class="text-sm font-mono font-bold text-emerald-400">0ч 0м 0с</span>
+                </div>
+                <div class="px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center space-x-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span id="wsStatus">WebSocket LIVE</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
+        <!-- Top KPI Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- CPU Card -->
+            <div class="bg-[#111622] border border-[#1F293D] rounded-2xl p-5 glow-cyan relative overflow-hidden">
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 font-bold">Процессор (CPU)</span>
+                    <span class="text-xs font-mono text-cyan-400 font-bold" id="cpuCoresCount">0 ядер</span>
+                </div>
+                <div class="flex items-baseline space-x-2">
+                    <span class="text-3xl font-extrabold font-mono text-cyan-400" id="cpuOverallVal">0%</span>
+                    <span class="text-xs text-slate-400">текущая загрузка</span>
+                </div>
+                <div class="w-full bg-slate-800 h-2 rounded-full mt-3 overflow-hidden">
+                    <div id="cpuProgressBar" class="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- RAM Card -->
+            <div class="bg-[#111622] border border-[#1F293D] rounded-2xl p-5 glow-purple relative overflow-hidden">
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 font-bold">Память (RAM)</span>
+                    <span class="text-xs font-mono text-purple-400 font-bold" id="ramRatioVal">0 / 0 GB</span>
+                </div>
+                <div class="flex items-baseline space-x-2">
+                    <span class="text-3xl font-extrabold font-mono text-purple-400" id="ramOverallVal">0%</span>
+                    <span class="text-xs text-slate-400">занято</span>
+                </div>
+                <div class="w-full bg-slate-800 h-2 rounded-full mt-3 overflow-hidden">
+                    <div id="ramProgressBar" class="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- Network Download -->
+            <div class="bg-[#111622] border border-[#1F293D] rounded-2xl p-5 glow-green relative overflow-hidden">
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 font-bold">Входящий трафик (RX)</span>
+                    <span class="text-xs font-mono text-emerald-400 font-bold">↓ Скорость</span>
+                </div>
+                <div class="flex items-baseline space-x-2">
+                    <span class="text-3xl font-extrabold font-mono text-emerald-400" id="netDownVal">0</span>
+                    <span class="text-xs text-slate-400">КБ/сек</span>
+                </div>
+                <div class="text-[11px] text-slate-400 mt-3 font-mono" id="netTotalRecv">
+                    Всего принято: 0 МБ
+                </div>
+            </div>
+
+            <!-- Network Upload -->
+            <div class="bg-[#111622] border border-[#1F293D] rounded-2xl p-5 relative overflow-hidden border-[#1F293D]">
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 font-bold">Исходящий трафик (TX)</span>
+                    <span class="text-xs font-mono text-amber-400 font-bold">↑ Скорость</span>
+                </div>
+                <div class="flex items-baseline space-x-2">
+                    <span class="text-3xl font-extrabold font-mono text-amber-400" id="netUpVal">0</span>
+                    <span class="text-xs text-slate-400">КБ/сек</span>
+                </div>
+                <div class="text-[11px] text-slate-400 mt-3 font-mono" id="netTotalSent">
+                    Всего отдано: 0 МБ
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- CPU & RAM Live Chart -->
+            <div class="bg-[#111622] border border-[#1F293D] rounded-2xl p-5">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-sm text-slate-200">📈 Динамика нагрузки CPU и RAM</h3>
+                    <div class="flex items-center space-x-3 text-xs">
+                        <span class="flex items-center space-x-1"><span class="w-2.5 h-2.5 rounded-full bg-cyan-400 inline-block"></span> <span>CPU %</span></span>
+                        <span class="flex items-center space-x-1"><span class="w-2.5 h-2.5 rounded-full bg-purple-400 inline-block"></span> <span>RAM %</span></span>
+                    </div>
+                </div>
+                <div class="h-64">
+                    <canvas id="cpuRamChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Network Bandwidth Live Chart -->
+            <div class="bg-[#111622] border border-[#1F293D] rounded-2xl p-5">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-sm text-slate-200">🌐 Сетевая активность (КБ/сек)</h3>
+                    <div class="flex items-center space-x-3 text-xs">
+                        <span class="flex items-center space-x-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block"></span> <span>Скачивание</span></span>
+                        <span class="flex items-center space-x-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span> <span>Отдача</span></span>
+                    </div>
+                </div>
+                <div class="h-64">
+                    <canvas id="netChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Disks & Core Breakdown & Processes -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Storage Disks -->
+            <div class="bg-[#111622] border border-[#1F293D] rounded-2xl p-5 flex flex-col">
+                <h3 class="font-bold text-sm text-slate-200 mb-4">💾 Накопители и разделы дисков</h3>
+                <div id="disksContainer" class="space-y-4 flex-1">
+                    <!-- Dynamic disks -->
+                </div>
+            </div>
+
+            <!-- Per Core CPU Breakdown -->
+            <div class="bg-[#111622] border border-[#1F293D] rounded-2xl p-5 flex flex-col">
+                <h3 class="font-bold text-sm text-slate-200 mb-4">⚙️ Загрузка по ядрам CPU</h3>
+                <div id="coresContainer" class="grid grid-cols-2 sm:grid-cols-4 gap-2 flex-1">
+                    <!-- Dynamic cores -->
+                </div>
+            </div>
+
+            <!-- Top Processes -->
+            <div class="bg-[#111622] border border-[#1F293D] rounded-2xl p-5 flex flex-col">
+                <h3 class="font-bold text-sm text-slate-200 mb-4">🔥 Топ процессов сервера</h3>
+                <div class="overflow-x-auto flex-1">
+                    <table class="w-full text-xs text-left">
+                        <thead>
+                            <tr class="text-slate-400 border-b border-slate-800">
+                                <th class="pb-2">Процесс</th>
+                                <th class="pb-2 text-right">CPU</th>
+                                <th class="pb-2 text-right">RAM</th>
+                            </tr>
+                        </thead>
+                        <tbody id="processesTable" class="divide-y divide-slate-800/60 font-mono">
+                            <!-- Dynamic rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-[#1F293D] py-4 text-center text-xs text-slate-500 font-mono">
+        Server & PC Health Monitor • Production Ready Uptime Dashboard © 2026
+    </footer>
+
+    <script>
+        // Init Charts
+        const maxPoints = 25;
+        const timeLabels = [];
+
+        // Chart 1: CPU & RAM
+        const ctxCpuRam = document.getElementById('cpuRamChart').getContext('2d');
+        const cpuRamChart = new Chart(ctxCpuRam, {
+            type: 'line',
+            data: {
+                labels: timeLabels,
+                datasets: [
+                    {
+                        label: 'CPU %',
+                        borderColor: '#00F5FF',
+                        backgroundColor: 'rgba(0, 245, 255, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        data: []
+                    },
+                    {
+                        label: 'RAM %',
+                        borderColor: '#A855F7',
+                        backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        data: []
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { min: 0, max: 100, grid: { color: '#1F293D' }, ticks: { color: '#64748B' } },
+                    x: { grid: { display: false }, ticks: { color: '#64748B' } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // Chart 2: Network
+        const ctxNet = document.getElementById('netChart').getContext('2d');
+        const netChart = new Chart(ctxNet, {
+            type: 'line',
+            data: {
+                labels: timeLabels,
+                datasets: [
+                    {
+                        label: 'Download (KB/s)',
+                        borderColor: '#00FF88',
+                        backgroundColor: 'rgba(0, 255, 136, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        data: []
+                    },
+                    {
+                        label: 'Upload (KB/s)',
+                        borderColor: '#F59E0B',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        data: []
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, grid: { color: '#1F293D' }, ticks: { color: '#64748B' } },
+                    x: { grid: { display: false }, ticks: { color: '#64748B' } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        function updateUI(data) {
+            document.getElementById('serverMeta').innerText = `${data.hostname} • ${data.os}`;
+            document.getElementById('uptimeVal').innerText = data.uptime;
+
+            // CPU
+            document.getElementById('cpuOverallVal').innerText = `${data.cpu.overall}%`;
+            document.getElementById('cpuCoresCount').innerText = `${data.cpu.count} ядер`;
+            document.getElementById('cpuProgressBar').style.width = `${data.cpu.overall}%`;
+
+            // RAM
+            document.getElementById('ramOverallVal').innerText = `${data.ram.percent}%`;
+            document.getElementById('ramRatioVal').innerText = `${data.ram.used_gb} / ${data.ram.total_gb} GB`;
+            document.getElementById('ramProgressBar').style.width = `${data.ram.percent}%`;
+
+            // Network
+            document.getElementById('netDownVal').innerText = data.network.download_kbps;
+            document.getElementById('netUpVal').innerText = data.network.upload_kbps;
+            document.getElementById('netTotalRecv').innerText = `Всего принято: ${data.network.total_recv_mb} МБ`;
+            document.getElementById('netTotalSent').innerText = `Всего отдано: ${data.network.total_sent_mb} МБ`;
+
+            // Charts
+            if (timeLabels.length >= maxPoints) {
+                timeLabels.shift();
+                cpuRamChart.data.datasets[0].data.shift();
+                cpuRamChart.data.datasets[1].data.shift();
+                netChart.data.datasets[0].data.shift();
+                netChart.data.datasets[1].data.shift();
+            }
+            timeLabels.push(data.timestamp);
+            cpuRamChart.data.datasets[0].data.push(data.cpu.overall);
+            cpuRamChart.data.datasets[1].data.push(data.ram.percent);
+            netChart.data.datasets[0].data.push(data.network.download_kbps);
+            netChart.data.datasets[1].data.push(data.network.upload_kbps);
+
+            cpuRamChart.update('none');
+            netChart.update('none');
+
+            // Disks
+            const disksContainer = document.getElementById('disksContainer');
+            disksContainer.innerHTML = data.disks.map(d => `
+                <div class="p-3 rounded-xl bg-slate-900/60 border border-slate-800">
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="font-bold text-slate-200">${d.mountpoint} (${d.device})</span>
+                        <span class="font-mono text-cyan-400">${d.percent}%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mb-1.5">
+                        <div class="h-full bg-cyan-400" style="width: ${d.percent}%"></div>
+                    </div>
+                    <div class="flex justify-between text-[10px] text-slate-400 font-mono">
+                        <span>Занято: ${d.used_gb} GB</span>
+                        <span>Свободно: ${d.free_gb} GB</span>
+                    </div>
+                </div>
+            `).join('');
+
+            // Cores
+            const coresContainer = document.getElementById('coresContainer');
+            coresContainer.innerHTML = data.cpu.cores.map((c, i) => `
+                <div class="p-2 rounded-lg bg-slate-900/60 border border-slate-800 text-center">
+                    <div class="text-[10px] text-slate-400 font-mono mb-1">Ядро ${i}</div>
+                    <div class="text-xs font-bold font-mono text-cyan-300 mb-1">${c}%</div>
+                    <div class="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
+                        <div class="h-full bg-cyan-400" style="width: ${c}%"></div>
+                    </div>
+                </div>
+            `).join('');
+
+            // Processes
+            const procTable = document.getElementById('processesTable');
+            procTable.innerHTML = data.processes.map(p => `
+                <tr class="hover:bg-slate-800/40">
+                    <td class="py-2 text-slate-200 truncate max-w-[120px]">${p.name} <span class="text-slate-500 text-[10px]">(${p.pid})</span></td>
+                    <td class="py-2 text-right text-cyan-400">${p.cpu}%</td>
+                    <td class="py-2 text-right text-purple-400">${p.ram}%</td>
+                </tr>
+            `).join('');
+        }
+
+        // WebSocket Connection
+        function connectWS() {
+            const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(`${proto}//${window.location.host}/ws`);
+            const statusBadge = document.getElementById('wsStatus');
+
+            ws.onopen = () => {
+                statusBadge.innerText = 'WebSocket LIVE';
+                statusBadge.parentElement.className = 'px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center space-x-2';
+            };
+
+            ws.onmessage = (evt) => {
+                const data = JSON.parse(evt.data);
+                updateUI(data);
+            };
+
+            ws.onclose = () => {
+                statusBadge.innerText = 'Переподключение...';
+                statusBadge.parentElement.className = 'px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs flex items-center space-x-2';
+                setTimeout(connectWS, 2000);
+            };
+        }
+
+        connectWS();
+    </script>
+</body>
+</html>
